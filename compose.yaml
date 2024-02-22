@@ -1,0 +1,52 @@
+services:
+    # Service names ("app", "mysql"), automatically becomes network aliases.
+    # (And Docker Compose automatically creates a network for this stack.)
+    app:
+        # The default instructions provided by the official tutorial happen
+        # to not work in my setup (WSL etc.). I was getting an ECONNREFUSED
+        # error in the logs. Googling suggested this might be because the db
+        # wasn't ready by the time the app tried to access it.
+        # https://stackoverflow.com/questions/64512831/docker-compose-getting-error-econnrefused-127-0-0-13306-with-mysql-and-nodejs
+        # suggested adding a depends_on: to the "app" service, and this works:
+        depends_on:
+            mysql:
+                # Note the condition (described here:
+                # https://docs.docker.com/compose/startup-order/) - otherwise
+                # the dependency doesn't necessarily know if mysql is
+                # actually ready (just that it's running).
+                condition: service_healthy
+        image: node:18-alpine
+        command: sh -c "yarn install && yarn run dev"
+        ports:
+            - 127.0.0.1:3000:3000
+        working_dir: /app
+        volumes:
+            - ./:/app
+        environment:
+            MYSQL_HOST: mysql
+            MYSQL_USER: root
+            MYSQL_PASSWORD: secret
+            MYSQL_DB: todos
+
+    mysql:
+        image: mysql:8.0
+        # Although docker run -v ... will create volumes automatically, that
+        # doesn't happen with Docker Compose.
+        volumes:
+            - todo-mysql-data:/var/lib/mysql
+        environment:
+            MYSQL_ROOT_PASSWORD: secret
+            MYSQL_DATABASE: todos
+        # This healthcheck is required for the depends_on condition above.
+        # You don't necessarily need to use these details, ofc -- they just
+        # seemed like a reasonable starting point, based on the SO answer :¬)
+        healthcheck:
+            test: mysqladmin ping -h mysql --password=$$MYSQL_ROOT_PASSWORD
+            interval: 30s
+            timeout: 12s
+            retries: 10
+
+# Volume used in mysql service above. Docker Compose will automatically
+# create what's needed/specified.
+volumes:
+    todo-mysql-data:
